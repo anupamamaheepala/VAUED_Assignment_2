@@ -1,0 +1,20 @@
+# ===== BACKEND (Python) =====
+backend/venv/
+backend/node_modules/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.env
+*.pyc
+*.pyo
+
+# ===== FRONTEND (React) =====
+frontend/node_modules/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# ===== GENERAL =====
+.DS_Store
+Thumbs.db
+*.log
