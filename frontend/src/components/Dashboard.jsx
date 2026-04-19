@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
-// ── Color tokens (matching original Tailwind theme) ──────────────────────────
+// ── Color tokens ──────────────────────────────────────────────────────────────
 const C = {
   bg: "#101510",
   surface: "#1c211b",
@@ -21,1115 +21,563 @@ const C = {
   stone900: "#1c1917",
 };
 
-// ── Shared font stacks ────────────────────────────────────────────────────────
 const fontHeadline = "'Manrope', sans-serif";
 const fontBody = "'Inter', sans-serif";
 const fontMono = "'IBM Plex Mono', monospace";
 
-export default function Dashboard({ onNavigate }) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function moistureColor(pct) {
+  if (pct < 30) return C.error;
+  if (pct < 50) return C.secondaryContainer;
+  return C.primary;
+}
+function moistureLabel(pct) {
+  if (pct < 30) return "Low";
+  if (pct < 50) return "Warning";
+  return "Optimum";
+}
+const statusMap = {
+  "Under Review": { bg: "rgba(147,0,10,0.3)", color: C.error },
+  Stable:         { bg: "rgba(6,95,24,0.3)",  color: C.primary },
+  Monitoring:     { bg: "rgba(254,179,0,0.1)", color: C.secondaryContainer },
+};
+
+// ── Nav items ─────────────────────────────────────────────────────────────────
+const NAV = [
+  { icon: "dashboard",         label: "Dashboard", page: "dashboard" },
+  { icon: "potted_plant",         label: "Health",     page: "health"    },
+  { icon: "notifications_active",label: "Alerts",     page: "alerts"    },
+  { icon: "trending_up",          label: "Trends",     page: "trends"    },
+  { icon: "smart_toy",           label: "AI Chatbot",page: "chatbot"   },
+];
+
+// ── Demo fallback ─────────────────────────────────────────────────────────────
+const DEMO = {
+  summary: {
+    daily_advice:
+      'Your nursery is <span style="color:#88d982">92% Healthy</span>. Dhaka sector has low soil moisture; <span style="text-decoration:underline;text-decoration-color:#feb300;text-underline-offset:4px">consider irrigation</span>.',
+    overall_health_pct: 92,
+    health_trend: "+2.4% vs last week",
+    season_yield: "1,420",
+    active_risks: 4,
+    risk_description:
+      "anomaly_flag = 1 detected in sensor net #A-02, #B-19, #D-01, #D-04",
+  },
+  season_yield_by_crop: [
+    { label: "Rice",   value: "420T" },
+    { label: "Wheat",  value: "380T" },
+    { label: "Tomato", value: "120T" },
+    { label: "Jute",   value: "310T" },
+    { label: "Potato", value: "190T" },
+  ],
+  crop_distribution: [
+    { label: "Rice Sector",   total: "Total 4,200 units", healthy: 85, stressed: 10, critical: 5  },
+    { label: "Wheat Sector",  total: "Total 3,100 units", healthy: 90, stressed: 7,  critical: 3  },
+    { label: "Tomato Sector", total: "Total 1,800 units", healthy: 60, stressed: 25, critical: 15 },
+  ],
+  table_rows: [
+    { sector_id: "DHAKA-N1", primary_crop: "Rice / BRRI dhan28", soil_moisture: 22, ph_balance: 6.4, temperature: 28.4, status: "Under Review" },
+    { sector_id: "DHAKA-S2", primary_crop: "Potato / Cardinal",  soil_moisture: 68, ph_balance: 5.8, temperature: 21.1, status: "Stable"        },
+    { sector_id: "MYM-N1",   primary_crop: "Jute / O-9897",      soil_moisture: 45, ph_balance: 7.1, temperature: 31.5, status: "Monitoring"   },
+  ],
+};
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Icon({ name, filled = false, style = {} }) {
   return (
-    <div
+    <span
+      className="material-symbols-outlined"
       style={{
-        minHeight: "100vh",
-        background: C.bg,
-        color: C.onSurface,
-        fontFamily: fontBody,
-        display: "flex",
+        fontVariationSettings: filled
+          ? "'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24"
+          : "'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24",
+        ...style,
       }}
     >
-      {/* Google Fonts */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap');
-        .material-symbols-outlined {
-          font-family: 'Material Symbols Outlined';
-          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-          font-size: 20px;
-          line-height: 1;
-          display: inline-block;
-          vertical-align: middle;
-        }
-        .mat-fill {
-          font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        .nav-link:hover { background: rgba(255,255,255,0.05); color: #86efac; }
-        .pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-        .advice-card:hover .advice-icon { opacity: 0.2; }
-      `}</style>
+      {name}
+    </span>
+  );
+}
 
-      {/* ── Sidebar ── */}
-      <aside
-        style={{
-          position: "fixed",
-          left: 0,
-          top: 0,
-          height: "100vh",
-          width: "256px",
-          background: "rgba(12,10,9,0.85)",
-          backdropFilter: "blur(20px)",
-          display: "flex",
-          flexDirection: "column",
-          paddingTop: "24px",
-          paddingBottom: "24px",
-          boxShadow: "32px 0 32px -4px rgba(0,0,0,0.45)",
-          zIndex: 50,
-        }}
-      >
-        {/* Logo */}
-        <div style={{ padding: "0 24px", marginBottom: "40px" }}>
-          <div
-            style={{
-              fontSize: "20px",
-              fontWeight: "700",
-              color: "#4ade80",
-              fontFamily: fontHeadline,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            NurseryPulse
-          </div>
-          <div
-            style={{
-              fontSize: "10px",
-              textTransform: "uppercase",
-              letterSpacing: "0.2em",
-              color: C.stone500,
-              marginTop: "2px",
-            }}
-          >
-            Smart Observatory
-          </div>
+function Sidebar({ activePage, onNavigate }) {
+  return (
+    <aside
+      style={{
+        position: "fixed",
+        left: 0,
+        top: 0,
+        height: "100vh",
+        width: 256,
+        background: "rgba(12,10,9,0.88)",
+        backdropFilter: "blur(20px)",
+        display: "flex",
+        flexDirection: "column",
+        paddingTop: 24,
+        paddingBottom: 24,
+        boxShadow: "32px 0 32px -4px rgba(0,0,0,0.45)",
+        zIndex: 50,
+      }}
+    >
+      <div style={{ padding: "0 24px", marginBottom: 40 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#4ade80", fontFamily: fontHeadline, letterSpacing: "-0.02em" }}>
+          NurseryPulse
         </div>
+        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.2em", color: C.stone500, marginTop: 2 }}>
+          Smart Observatory
+        </div>
+      </div>
 
-        {/* Nav */}
-        <nav style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-          {[
-            { icon: "dashboard", label: "Dashboard", page: "dashboard", active: true },
-            { icon: "potted_plant", label: "Health", page: "health", active: false },
-            { icon: "notifications_active", label: "Alerts", page: "alerts", active: false },
-            { icon: "trending_up", label: "Trends", page: "trends", active: false },
-            { icon: "smart_toy", label: "AI Chatbot", page: "chatbot", active: false },
-          ].map(({ icon, label, page, active }) => (
+      <nav style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        {NAV.map(({ icon, label, page }) => {
+          const active = activePage === page;
+          return (
             <a
-              key={label}
+              key={page}
               href="#"
-              className={active ? "" : "nav-link"}
               onClick={(e) => { e.preventDefault(); onNavigate && onNavigate(page); }}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "12px",
+                gap: 12,
                 padding: "12px 16px",
                 color: active ? "#4ade80" : C.stone400,
                 borderLeft: active ? "4px solid #22c55e" : "4px solid transparent",
                 background: active ? "rgba(34,197,94,0.1)" : "transparent",
                 textDecoration: "none",
-                fontSize: "14px",
-                fontWeight: "500",
+                fontSize: 14,
+                fontWeight: 500,
                 transition: "all 0.2s",
                 transform: active ? "translateX(2px)" : "none",
               }}
             >
-              <span className="material-symbols-outlined">{icon}</span>
+              <Icon name={icon} />
               {label}
             </a>
-          ))}
-        </nav>
+          );
+        })}
+      </nav>
 
-        {/* User card */}
-        <div style={{ padding: "0 24px", marginTop: "auto", marginBottom: "32px" }}>
-          <div
+      <div style={{ padding: "0 24px", marginTop: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 12, background: "rgba(255,255,255,0.05)" }}>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.primaryContainer, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Icon name="person" style={{ color: C.primary, fontSize: 18 }} />
+          </div>
+          <p style={{ fontSize: 12, fontWeight: 700, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            Executive Admin
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function TopHeader() {
+  return (
+    <header style={{ position: "fixed", top: 0, right: 0, width: "calc(100% - 256px)", height: 64, background: "rgba(12,10,9,0.5)", backdropFilter: "blur(12px)", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 32px", zIndex: 40, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ flex: 1 }} />
+      <div style={{ width: 320, position: "relative", marginRight: 16 }}>
+        <Icon name="search" style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: C.stone400, fontSize: 16 }} />
+        <input placeholder="Search nursery sectors..." style={{ width: "100%", background: "rgba(38,43,38,0.9)", border: "1px solid rgba(136,217,130,0.2)", borderRadius: 9999, padding: "9px 16px 9px 38px", fontSize: 13, color: C.onSurface, outline: "none", fontFamily: fontBody, boxSizing: "border-box" }} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        {["notifications", "settings"].map((icon) => (
+          <button key={icon} style={{ background: "none", border: "none", cursor: "pointer", padding: 8, borderRadius: "50%", color: C.stone400, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name={icon} /></button>
+        ))}
+        <div style={{ width: 1, height: 16, background: C.stone800 }} />
+        <span style={{ fontSize: 12, fontWeight: 500, fontFamily: fontHeadline, color: C.stone300 }}>NurseryPulse Monitor</span>
+      </div>
+    </header>
+  );
+}
+
+function Card({ children, style = {} }) {
+  return <div style={{ background: C.surfaceHigh, borderRadius: 12, padding: 24, ...style }}>{children}</div>;
+}
+
+// function AdviceCard({ text }) {
+//   return (
+//     <div style={{ gridColumn: "span 8", background: "rgba(49,54,48,0.7)", backdropFilter: "blur(12px)", border: "1px solid rgba(65,73,62,0.2)", borderRadius: 12, padding: 24, position: "relative", overflow: "hidden" }}>
+//       <div style={{ position: "absolute", top: 0, right: 0, padding: 32, opacity: 0.1, pointerEvents: "none" }}><Icon name="psychology" filled style={{ fontSize: 96, color: C.primary }} /></div>
+//       <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+//         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+//           <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: C.primary, flexShrink: 0, animation: "pulse 2s cubic-bezier(.4,0,.6,1) infinite" }} />
+//           <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700, color: C.primary }}>Daily Advice</span>
+//         </div>
+//         <p dangerouslySetInnerHTML={{ __html: text }} style={{ fontSize: 22, fontWeight: 700, fontFamily: fontHeadline, lineHeight: 1.4, margin: 0, maxWidth: 600 }} />
+//         <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+//           <button style={{ background: `linear-gradient(135deg, ${C.primary}, ${C.primaryContainer})`, color: "#003909", border: "none", padding: "8px 20px", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontFamily: fontBody }}><Icon name="water_drop" filled style={{ fontSize: 16 }} /> Trigger Dhaka Irrigation</button>
+//           <button style={{ background: "rgba(49,54,48,0.5)", color: C.onSurface, border: "none", padding: "8px 20px", borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: "pointer", fontFamily: fontBody }}>Dismiss</button>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
+function AdviceCard({ text }) {
+  // Local state to handle dismissal
+  const [isVisible, setIsVisible] = useState(true);
+
+  if (!isVisible) return null;
+
+  const handleTriggerIrrigation = async () => {
+    try {
+      // Example API call to your backend
+      // await fetch("http://127.0.0.1:8000/api/irrigation/trigger", { method: "POST" });
+      alert("Irrigation system triggered for Dhaka Sector.");
+    } catch (error) {
+      console.error("Failed to trigger irrigation:", error);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        gridColumn: "span 8",
+        background: "rgba(49,54,48,0.7)",
+        backdropFilter: "blur(12px)",
+        border: "1px solid rgba(65,73,62,0.2)",
+        borderRadius: 12,
+        padding: 24,
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Background icon */}
+      <div style={{ position: "absolute", top: 0, right: 0, padding: 32, opacity: 0.1, pointerEvents: "none" }}>
+        <Icon name="psychology" filled style={{ fontSize: 96, color: C.primary }} />
+      </div>
+
+      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: C.primary, flexShrink: 0, animation: "pulse 2s cubic-bezier(.4,0,.6,1) infinite" }} />
+          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.15em", fontWeight: 700, color: C.primary }}>
+            Daily Advice
+          </span>
+        </div>
+
+        <p dangerouslySetInnerHTML={{ __html: text }} style={{ fontSize: 22, fontWeight: 700, fontFamily: fontHeadline, lineHeight: 1.4, margin: 0, maxWidth: 600 }} />
+
+        <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+          {/* Action Button */}
+          <button
+            onClick={handleTriggerIrrigation}
             style={{
+              background: `linear-gradient(135deg, ${C.primary}, ${C.primaryContainer})`,
+              color: "#003909",
+              border: "none",
+              padding: "8px 20px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              gap: "12px",
-              padding: "12px",
-              borderRadius: "12px",
-              background: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "50%",
-                background: C.primaryContainer,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                overflow: "hidden",
-              }}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{ color: C.primary, fontSize: "18px" }}
-              >
-                person
-              </span>
-            </div>
-            <div style={{ overflow: "hidden" }}>
-              <p
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "700",
-                  margin: 0,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                Executive Admin
-              </p>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      {/* ── Top Header ── */}
-      <header
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          width: "calc(100% - 256px)",
-          height: "64px",
-          background: "rgba(12,10,9,0.5)",
-          backdropFilter: "blur(12px)",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0 32px",
-          zIndex: 40,
-          borderBottom: "1px solid rgba(255,255,255,0.05)",
-        }}
-      >
-        {/* Spacer to push search right */}
-        <div style={{ flex: 1 }} />
-
-        {/* Search */}
-        <div style={{ width: "320px", position: "relative", marginRight: "16px" }}>
-          <span
-            className="material-symbols-outlined"
-            style={{
-              position: "absolute",
-              left: "12px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: C.stone400,
-              fontSize: "16px",
-            }}
-          >
-            search
-          </span>
-          <input
-            placeholder="Search nursery sectors..."
-            style={{
-              width: "100%",
-              background: "rgba(38,43,38,0.9)",
-              border: "1px solid rgba(136,217,130,0.2)",
-              borderRadius: "9999px",
-              padding: "9px 16px 9px 38px",
-              fontSize: "13px",
-              color: C.onSurface,
-              outline: "none",
+              gap: 8,
               fontFamily: fontBody,
-              boxSizing: "border-box",
+              transition: "opacity 0.2s",
             }}
-          />
-        </div>
-
-        {/* Right icons */}
-        <div
-          style={{ display: "flex", alignItems: "center", gap: "16px" }}
-        >
-          {["notifications", "settings"].map((icon) => (
-            <button
-              key={icon}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "8px",
-                borderRadius: "50%",
-                color: C.stone400,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <span className="material-symbols-outlined">{icon}</span>
-            </button>
-          ))}
-          <div
-            style={{
-              width: "1px",
-              height: "16px",
-              background: C.stone800,
-            }}
-          />
-          <span
-            style={{
-              fontSize: "12px",
-              fontWeight: "500",
-              fontFamily: fontHeadline,
-              color: C.stone300,
-            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
           >
-            NurseryPulse Monitor
-          </span>
-        </div>
-      </header>
+            <Icon name="water_drop" filled style={{ fontSize: 16 }} />
+            Trigger Dhaka Irrigation
+          </button>
 
-      {/* ── Main Content ── */}
-      <main
-        style={{
-          marginLeft: "256px",
-          paddingTop: "96px",
-          paddingBottom: "48px",
-          padding: "96px 32px 48px 32px",
-          minHeight: "100vh",
-          width: "calc(100% - 256px)",
-          boxSizing: "border-box",
-        }}
-      >
-        {/* Page title */}
-        <section style={{ marginBottom: "32px" }}>
-          <h1
+          {/* Dismiss Button */}
+          <button
+            onClick={() => setIsVisible(false)}
             style={{
-              fontSize: "30px",
-              fontWeight: "800",
-              fontFamily: fontHeadline,
+              background: "rgba(49,54,48,0.5)",
               color: C.onSurface,
-              margin: 0,
-              letterSpacing: "-0.02em",
+              border: "none",
+              padding: "8px 20px",
+              borderRadius: 8,
+              fontSize: 14,
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: fontBody,
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(49,54,48,0.8)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(49,54,48,0.5)")}
           >
-            Executive Overview
-          </h1>
-          <p style={{ fontSize: "14px", color: C.onSurfaceVariant, margin: "4px 0 0" }}>
-            System Status:{" "}
-            <span style={{ color: C.primary, fontWeight: "600" }}>Nominal</span>{" "}
-            • Last Update: 2m ago
-          </p>
-        </section>
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* ── Bento Grid ── */}
-        <div
+function HealthCard({ pct, trend }) {
+  return (
+    <Card style={{ gridColumn: "span 4", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <p style={{ fontSize: 14, color: C.onSurfaceVariant, margin: 0 }}>Overall Health</p>
+        <Icon name="health_and_safety" style={{ color: C.primary }} />
+      </div>
+      <div style={{ marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+          <span style={{ fontSize: 48, fontWeight: 900, fontFamily: fontHeadline, lineHeight: 1 }}>{pct}%</span>
+          <span style={{ fontSize: 12, color: C.primary, fontWeight: 700, marginBottom: 6 }}>{trend || "+2.4% vs last week"}</span>
+        </div>
+        <div style={{ width: "100%", height: 8, background: C.stone800, borderRadius: 9999, marginTop: 16, overflow: "hidden", display: "flex" }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: C.primary }} />
+          <div style={{ width: `${100 - pct}%`, height: "100%", background: C.error }} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function YieldCard({ total, items }) {
+  return (
+    <Card style={{ gridColumn: "span 4" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
+        <div>
+          <p style={{ fontSize: 14, color: C.onSurfaceVariant, margin: 0 }}>Season Yield</p>
+          <p style={{ fontSize: 22, fontWeight: 700, fontFamily: fontHeadline, margin: "4px 0 0" }}>Est. {total} Tons</p>
+        </div>
+        <Icon name="inventory_2" style={{ color: C.secondaryContainer }} />
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {items.map(({ label, value }) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: C.stone400 }}>{label}</span>
+            <div style={{ flex: 1, margin: "0 12px", height: 1, background: C.stone800 }} />
+            <span style={{ fontSize: 12, fontFamily: fontMono, fontWeight: 700 }}>{value}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function RisksCard({ count, description }) {
+  return (
+    <Card style={{ gridColumn: "span 3", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <p style={{ fontSize: 14, color: C.onSurfaceVariant, margin: 0 }}>Active Risks</p>
+        <Icon name="warning" filled style={{ color: C.error }} />
+      </div>
+      
+      <div style={{ marginTop: 16 }}>
+        <div style={{ 
+          fontSize: 56, 
+          fontWeight: 900, 
+          fontFamily: fontHeadline, 
+          color: C.error, 
+          lineHeight: 1 
+        }}>
+          {String(count).padStart(2, "0")}
+        </div>
+        {/* Description text - only shows if provided */}
+        {description && (
+          <p style={{ fontSize: 11, color: C.stone500, marginTop: 8, lineHeight: 1.5 }}>
+            {description}
+          </p>
+        )}
+      </div>
+
+      {/* This is the missing footer section */}
+      <div style={{ 
+        marginTop: 16, 
+        paddingTop: 16, 
+        borderTop: "1px solid rgba(255,255,255,0.05)" 
+      }}>
+        <a
+          href="#"
+          onClick={(e) => e.preventDefault()}
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(12, 1fr)",
-            gap: "24px",
+            fontSize: 12,
+            fontWeight: 700,
+            color: C.error,
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
           }}
         >
-          {/* Daily Advice Card */}
-          <div
-            className="advice-card"
-            style={{
-              gridColumn: "span 8",
-              background: "rgba(49,54,48,0.7)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid rgba(65,73,62,0.2)",
-              borderRadius: "12px",
-              padding: "24px",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            {/* Background icon */}
-            <div
-              className="advice-icon"
-              style={{
-                position: "absolute",
-                top: 0,
-                right: 0,
-                padding: "32px",
-                opacity: 0.1,
-                transition: "opacity 0.3s",
-                pointerEvents: "none",
-              }}
-            >
-              <span
-                className="material-symbols-outlined mat-fill"
-                style={{ fontSize: "96px", color: C.primary }}
-              >
-                psychology
-              </span>
+          View Anomaly Log
+          <Icon name="arrow_forward" style={{ fontSize: 14 }} />
+        </a>
+      </div>
+    </Card>
+  );
+}
+
+function CropDistCard({ items }) {
+  return (
+    <Card style={{ gridColumn: "span 5" }}>
+      <h3 style={{ fontSize: 18, fontWeight: 700, fontFamily: fontHeadline, marginBottom: 32 }}>Crop Health Distribution</h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+        {items.map(({ label, total, healthy, stressed, critical }) => (
+          <div key={label}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 10, textTransform: "uppercase", fontWeight: 700 }}>{label}</span>
+              <span style={{ fontSize: 10, color: C.stone500 }}>{total}</span>
             </div>
-
-            <div
-              style={{
-                position: "relative",
-                zIndex: 1,
-                display: "flex",
-                flexDirection: "column",
-                gap: "16px",
-              }}
-            >
-              {/* Label */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span
-                  className="pulse"
-                  style={{
-                    display: "inline-block",
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: C.primary,
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    fontSize: "10px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.15em",
-                    fontWeight: "700",
-                    color: C.primary,
-                    fontFamily: fontBody,
-                  }}
-                >
-                  Daily Advice
-                </span>
-              </div>
-
-              {/* Headline */}
-              <p
-                style={{
-                  fontSize: "22px",
-                  fontWeight: "700",
-                  fontFamily: fontHeadline,
-                  lineHeight: "1.4",
-                  margin: 0,
-                  maxWidth: "600px",
-                }}
-              >
-                Your nursery is{" "}
-                <span style={{ color: C.primary }}>92% Healthy</span>. Dhaka
-                sector has low soil moisture;{" "}
-                <span
-                  style={{
-                    textDecoration: "underline",
-                    textDecorationColor: C.secondaryContainer,
-                    textUnderlineOffset: "4px",
-                  }}
-                >
-                  consider irrigation
-                </span>
-                .
-              </p>
-
-              {/* Buttons */}
-              <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
-                <button
-                  style={{
-                    background: `linear-gradient(135deg, ${C.primary}, ${C.primaryContainer})`,
-                    color: "#003909",
-                    border: "none",
-                    padding: "8px 20px",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "700",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    fontFamily: fontBody,
-                  }}
-                >
-                  <span
-                    className="material-symbols-outlined mat-fill"
-                    style={{ fontSize: "16px" }}
-                  >
-                    water_drop
-                  </span>
-                  Trigger Dhaka Irrigation
-                </button>
-                <button
-                  style={{
-                    background: "rgba(49,54,48,0.5)",
-                    color: C.onSurface,
-                    border: "none",
-                    padding: "8px 20px",
-                    borderRadius: "8px",
-                    fontSize: "14px",
-                    fontWeight: "500",
-                    cursor: "pointer",
-                    fontFamily: fontBody,
-                  }}
-                >
-                  Dismiss
-                </button>
-              </div>
+            <div style={{ width: "100%", height: 12, background: C.stone800, borderRadius: 9999, overflow: "hidden", display: "flex" }}>
+              <div style={{ width: `${healthy}%`, background: C.primary }} />
+              <div style={{ width: `${stressed}%`, background: C.secondaryContainer }} />
+              <div style={{ width: `${critical}%`, background: C.error }} />
             </div>
           </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
-          {/* KPI: Overall Health */}
-          <div
+// ── Sector Performance Matrix ─────────────────────────────────────────────────
+function SectorTable({ rows }) {
+  const handleExport = () => {
+    if (!rows || rows.length === 0) return;
+
+    // 1. Prepare Headers
+    const headers = ["Sector ID", "Primary Crop", "Moisture %", "pH Balance", "Temp (C)", "Status"];
+    
+    // 2. Map Rows to CSV strings (handling potential commas with quotes)
+    const csvContent = [
+      headers.join(","), 
+      ...rows.map(r => [
+        r.sector_id,
+        `"${r.primary_crop}"`,
+        r.soil_moisture,
+        r.ph_balance,
+        r.temperature,
+        r.status
+      ].join(","))
+    ].join("\n");
+
+    // 3. Create Blob and Trigger Download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Nursery_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <Card style={{ gridColumn: "span 12" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, fontFamily: fontHeadline, margin: 0 }}>
+          Sector Performance Matrix
+        </h3>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={handleExport}
             style={{
-              gridColumn: "span 4",
-              background: C.surfaceHigh,
-              borderRadius: "12px",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
+              background: C.surfaceHighest,
+              border: "1px solid rgba(255,255,255,0.05)",
+              color: C.onSurface,
+              padding: "6px 12px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              fontFamily: fontBody,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
-              <p
-                style={{
-                  fontSize: "14px",
-                  color: C.onSurfaceVariant,
-                  margin: 0,
-                }}
-              >
-                Overall Health
-              </p>
-              <span
-                className="material-symbols-outlined"
-                style={{ color: C.primary }}
-              >
-                health_and_safety
-              </span>
-            </div>
-            <div style={{ marginTop: "16px" }}>
-              <div
-                style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}
-              >
-                <span
-                  style={{
-                    fontSize: "48px",
-                    fontWeight: "900",
-                    fontFamily: fontHeadline,
-                    lineHeight: 1,
-                  }}
-                >
-                  92%
-                </span>
-                <span
-                  style={{
-                    fontSize: "12px",
-                    color: C.primary,
-                    fontWeight: "700",
-                    marginBottom: "6px",
-                  }}
-                >
-                  +2.4% vs last week
-                </span>
-              </div>
-              {/* Progress bar */}
-              <div
-                style={{
-                  width: "100%",
-                  height: "8px",
-                  background: C.stone800,
-                  borderRadius: "9999px",
-                  marginTop: "16px",
-                  overflow: "hidden",
-                  display: "flex",
-                }}
-              >
-                <div
-                  style={{
-                    width: "92%",
-                    height: "100%",
-                    background: C.primary,
-                  }}
-                />
-                <div
-                  style={{
-                    width: "8%",
-                    height: "100%",
-                    background: C.error,
-                  }}
-                />
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginTop: "8px",
-                }}
-              >
-                <span style={{ fontSize: "10px", color: C.stone500 }}>
-                  92% Healthy
-                </span>
-                <span style={{ fontSize: "10px", color: C.stone500 }}>
-                  8% Critical
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* KPI: Season Yield */}
-          <div
-            style={{
-              gridColumn: "span 4",
-              background: C.surfaceHigh,
-              borderRadius: "12px",
-              padding: "24px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                marginBottom: "24px",
-              }}
-            >
-              <div>
-                <p
-                  style={{
-                    fontSize: "14px",
-                    color: C.onSurfaceVariant,
-                    margin: 0,
-                  }}
-                >
-                  Season Yield
-                </p>
-                <p
-                  style={{
-                    fontSize: "22px",
-                    fontWeight: "700",
-                    fontFamily: fontHeadline,
-                    margin: "4px 0 0",
-                  }}
-                >
-                  Est. 1,420 Tons
-                </p>
-              </div>
-              <span
-                className="material-symbols-outlined"
-                style={{ color: C.secondaryContainer }}
-              >
-                inventory_2
-              </span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {[
-                { label: "Rice", value: "420T" },
-                { label: "Wheat", value: "380T" },
-                { label: "Tomato", value: "120T" },
-                { label: "Jute", value: "310T" },
-                { label: "Potato", value: "190T" },
-              ].map(({ label, value }) => (
-                <div
-                  key={label}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <span style={{ fontSize: "12px", color: C.stone400 }}>
-                    {label}
-                  </span>
-                  <div
-                    style={{
-                      flex: 1,
-                      margin: "0 12px",
-                      height: "1px",
-                      background: C.stone800,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      fontFamily: fontMono,
-                      fontWeight: "700",
-                    }}
-                  >
-                    {value}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* KPI: Active Risks */}
-          <div
-            style={{
-              gridColumn: "span 3",
-              background: C.surfaceHigh,
-              borderRadius: "12px",
-              padding: "24px",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
-              <p
-                style={{
-                  fontSize: "14px",
-                  color: C.onSurfaceVariant,
-                  margin: 0,
-                }}
-              >
-                Active Risks
-              </p>
-              <span
-                className="material-symbols-outlined mat-fill"
-                style={{ color: C.error }}
-              >
-                warning
-              </span>
-            </div>
-            <div style={{ marginTop: "16px" }}>
-              <div
-                style={{
-                  fontSize: "56px",
-                  fontWeight: "900",
-                  fontFamily: fontHeadline,
-                  color: C.error,
-                  lineHeight: 1,
-                }}
-              >
-                04
-              </div>
-              <p
-                style={{
-                  fontSize: "11px",
-                  color: C.stone500,
-                  marginTop: "8px",
-                  lineHeight: "1.5",
-                }}
-              >
-                anomaly_flag = 1 detected in sensor net #A-02, #B-19, #D-01,
-                #D-04
-              </p>
-            </div>
-            <div
-              style={{
-                marginTop: "16px",
-                paddingTop: "16px",
-                borderTop: "1px solid rgba(255,255,255,0.05)",
-              }}
-            >
-              <a
-                href="#"
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "700",
-                  color: C.error,
-                  textDecoration: "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                View Anomaly Log{" "}
-                <span
-                  className="material-symbols-outlined"
-                  style={{ fontSize: "14px" }}
-                >
-                  arrow_forward
-                </span>
-              </a>
-            </div>
-          </div>
-
-          {/* Crop Health Distribution */}
-          <div
-            style={{
-              gridColumn: "span 5",
-              background: C.surfaceHigh,
-              borderRadius: "12px",
-              padding: "24px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "32px",
-              }}
-            >
-              <div>
-                <h3
-                  style={{
-                    fontSize: "18px",
-                    fontWeight: "700",
-                    fontFamily: fontHeadline,
-                    margin: 0,
-                  }}
-                >
-                  Crop Health Distribution
-                </h3>
-                <p
-                  style={{
-                    fontSize: "11px",
-                    color: C.stone500,
-                    margin: "4px 0 0",
-                  }}
-                >
-                  Live monitoring per category
-                </p>
-              </div>
-              <button
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: C.stone400,
-                  cursor: "pointer",
-                }}
-              >
-                <span className="material-symbols-outlined">more_vert</span>
-              </button>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-              {[
-                {
-                  label: "Rice Sector",
-                  total: "Total 4,200 units",
-                  healthy: 85,
-                  stressed: 10,
-                  critical: 5,
-                },
-                {
-                  label: "Wheat Sector",
-                  total: "Total 3,100 units",
-                  healthy: 90,
-                  stressed: 7,
-                  critical: 3,
-                },
-                {
-                  label: "Tomato Sector",
-                  total: "Total 1,800 units",
-                  healthy: 60,
-                  stressed: 25,
-                  critical: 15,
-                },
-              ].map(({ label, total, healthy, stressed, critical }) => (
-                <div key={label}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.1em",
-                        fontWeight: "700",
-                      }}
-                    >
-                      {label}
-                    </span>
-                    <span style={{ fontSize: "10px", color: C.stone500 }}>
-                      {total}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "12px",
-                      background: C.stone800,
-                      borderRadius: "9999px",
-                      overflow: "hidden",
-                      display: "flex",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: `${healthy}%`,
-                        height: "100%",
-                        background: C.primary,
-                      }}
-                    />
-                    <div
-                      style={{
-                        width: `${stressed}%`,
-                        height: "100%",
-                        background: C.secondaryContainer,
-                      }}
-                    />
-                    <div
-                      style={{
-                        width: `${critical}%`,
-                        height: "100%",
-                        background: C.error,
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Legend */}
-            <div
-              style={{
-                marginTop: "32px",
-                display: "flex",
-                gap: "24px",
-              }}
-            >
-              {[
-                { color: C.primary, label: "Healthy" },
-                { color: C.secondaryContainer, label: "Stressed" },
-                { color: C.error, label: "Critical" },
-              ].map(({ color, label }) => (
-                <div
-                  key={label}
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "12px",
-                      height: "12px",
-                      borderRadius: "3px",
-                      background: color,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      fontWeight: "500",
-                      color: C.stone400,
-                    }}
-                  >
-                    {label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Sector Performance Matrix */}
-          <div
-            style={{
-              gridColumn: "span 12",
-              background: C.surfaceHigh,
-              borderRadius: "12px",
-              padding: "24px",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "24px",
-              }}
-            >
-              <h3
-                style={{
-                  fontSize: "18px",
-                  fontWeight: "700",
-                  fontFamily: fontHeadline,
-                  margin: 0,
-                }}
-              >
-                Sector Performance Matrix
-              </h3>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {["Export CSV", "Last 24h"].map((label) => (
-                  <button
-                    key={label}
-                    style={{
-                      background: C.surfaceHighest,
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      color: C.onSurface,
-                      padding: "6px 12px",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      fontWeight: "500",
-                      cursor: "pointer",
-                      fontFamily: fontBody,
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  textAlign: "left",
-                }}
-              >
-                <thead>
-                  <tr
-                    style={{
-                      borderBottom: "1px solid rgba(255,255,255,0.05)",
-                    }}
-                  >
-                    {[
-                      "Sector ID",
-                      "Primary Crop",
-                      "Moisture Level",
-                      "pH Balance",
-                      "Avg Temp",
-                      "Status",
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        style={{
-                          paddingBottom: "16px",
-                          fontSize: "10px",
-                          textTransform: "uppercase",
-                          fontWeight: "700",
-                          color: C.stone500,
-                          letterSpacing: "0.05em",
-                        }}
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    {
-                      id: "DHAKA-N1",
-                      crop: "Rice / BRRI dhan28",
-                      moisture: "22%",
-                      moistureLabel: "Low",
-                      moistureColor: C.error,
-                      ph: "6.4",
-                      temp: "28.4°C",
-                      status: "Under Review",
-                      statusBg: "rgba(147,0,10,0.3)",
-                      statusColor: C.error,
-                    },
-                    {
-                      id: "DHAKA-S2",
-                      crop: "Potato / Cardinal",
-                      moisture: "68%",
-                      moistureLabel: "Optimum",
-                      moistureColor: C.primary,
-                      ph: "5.8",
-                      temp: "21.1°C",
-                      status: "Stable",
-                      statusBg: "rgba(6,95,24,0.3)",
-                      statusColor: C.primary,
-                    },
-                    {
-                      id: "MYM-N1",
-                      crop: "Jute / O-9897",
-                      moisture: "45%",
-                      moistureLabel: "Warning",
-                      moistureColor: C.secondaryContainer,
-                      ph: "7.1",
-                      temp: "31.5°C",
-                      status: "Monitoring",
-                      statusBg: "rgba(254,179,0,0.1)",
-                      statusColor: C.secondaryContainer,
-                    },
-                  ].map((row) => (
-                    <tr
-                      key={row.id}
-                      style={{
-                        borderBottom: "1px solid rgba(255,255,255,0.05)",
-                      }}
-                    >
-                      <td
-                        style={{
-                          padding: "16px 0",
-                          fontSize: "14px",
-                          fontWeight: "700",
-                          fontFamily: fontHeadline,
-                        }}
-                      >
-                        {row.id}
-                      </td>
-                      <td
-                        style={{
-                          padding: "16px 0",
-                          fontSize: "14px",
-                          color: C.stone300,
-                        }}
-                      >
-                        {row.crop}
-                      </td>
-                      <td
-                        style={{
-                          padding: "16px 0",
-                          fontSize: "14px",
-                          fontFamily: fontMono,
-                          color: row.moistureColor,
-                        }}
-                      >
-                        {row.moisture}{" "}
-                        <span
-                          style={{ fontSize: "10px", opacity: 0.6 }}
-                        >
-                          ({row.moistureLabel})
-                        </span>
-                      </td>
-                      <td
-                        style={{
-                          padding: "16px 0",
-                          fontSize: "14px",
-                          color: C.stone300,
-                          fontFamily: fontMono,
-                        }}
-                      >
-                        {row.ph}
-                      </td>
-                      <td
-                        style={{
-                          padding: "16px 0",
-                          fontSize: "14px",
-                          color: C.stone300,
-                          fontFamily: fontMono,
-                        }}
-                      >
-                        {row.temp}
-                      </td>
-                      <td style={{ padding: "16px 0" }}>
-                        <span
-                          style={{
-                            padding: "4px 8px",
-                            background: row.statusBg,
-                            color: row.statusColor,
-                            fontSize: "10px",
-                            fontWeight: "700",
-                            borderRadius: "4px",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.05em",
-                          }}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            Export CSV
+          </button>
+          <button style={{ background: C.surfaceHighest, border: "1px solid rgba(255,255,255,0.05)", color: C.onSurface, padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: fontBody }}>
+            Last 24h
+          </button>
         </div>
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              {["Sector ID", "Primary Crop", "Moisture Level", "pH Balance", "Avg Temp", "Status"].map((h) => (
+                <th key={h} style={{ paddingBottom: 16, fontSize: 10, textTransform: "uppercase", fontWeight: 700, color: C.stone500, letterSpacing: "0.05em" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => {
+              const mc = moistureColor(row.soil_moisture);
+              const ml = moistureLabel(row.soil_moisture);
+              const st = statusMap[row.status] || { bg: "rgba(49,54,48,0.5)", color: C.onSurfaceVariant };
+              return (
+                <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                  <td style={{ padding: "16px 0", fontSize: 14, fontWeight: 700, fontFamily: fontHeadline }}>{row.sector_id}</td>
+                  <td style={{ padding: "16px 0", fontSize: 14, color: C.stone300 }}>{row.primary_crop}</td>
+                  <td style={{ padding: "16px 0", fontSize: 14, fontFamily: fontMono, color: mc }}>{row.soil_moisture}% <span style={{ fontSize: 10, opacity: 0.6 }}>({ml})</span></td>
+                  <td style={{ padding: "16px 0", fontSize: 14, color: C.stone300, fontFamily: fontMono }}>{row.ph_balance}</td>
+                  <td style={{ padding: "16px 0", fontSize: 14, color: C.stone300, fontFamily: fontMono }}>{row.temperature}°C</td>
+                  <td style={{ padding: "16px 0" }}>
+                    <span style={{ padding: "4px 8px", background: st.bg, color: st.color, fontSize: 10, fontWeight: 700, borderRadius: 4, textTransform: "uppercase" }}>{row.status}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ── Main Dashboard ────────────────────────────────────────────────────────────
+export default function Dashboard({ onNavigate }) {
+  const [data, setData] = useState(null);
+  const [activePage, setActivePage] = useState("dashboard");
+
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/data/dashboard")
+      .then((res) => res.json())
+      .then(setData)
+      .catch(() => setData(DEMO));
+  }, []);
+
+  const handleNav = (page) => {
+    setActivePage(page);
+    onNavigate && onNavigate(page);
+  };
+
+  const { summary, season_yield_by_crop, crop_distribution, table_rows } = data || {};
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.onSurface, fontFamily: fontBody, display: "flex" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap');
+        .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-size: 20px; line-height: 1; display: inline-block; vertical-align: middle; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        * { box-sizing: border-box; }
+      `}</style>
+
+      <Sidebar activePage={activePage} onNavigate={handleNav} />
+      <TopHeader />
+
+      <main style={{ marginLeft: 256, padding: "96px 32px 48px", width: "calc(100% - 256px)", minHeight: "100vh" }}>
+        {!data ? (
+          <div style={{ color: C.primary, fontSize: 16, padding: "40px 0" }}>Loading dashboard data…</div>
+        ) : (
+          <>
+            <section style={{ marginBottom: 32 }}>
+              <h1 style={{ fontSize: 30, fontWeight: 800, fontFamily: fontHeadline, margin: 0 }}>Executive Overview</h1>
+              <p style={{ fontSize: 14, color: C.onSurfaceVariant, margin: "4px 0 0" }}>System Status: <span style={{ color: C.primary, fontWeight: 600 }}>Nominal</span> • Last Update: 2m ago</p>
+            </section>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 24 }}>
+              <AdviceCard text={summary.daily_advice} />
+              <HealthCard pct={summary.overall_health_pct} trend={summary.health_trend} />
+              <YieldCard total={summary.season_yield} items={season_yield_by_crop} />
+              <RisksCard count={summary.active_risks} description={summary.risk_description} />
+              <CropDistCard items={crop_distribution} />
+              <SectorTable rows={table_rows} />
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

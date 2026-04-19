@@ -6,11 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routes.chat import router as chat_router
+from routes.data import router as data_router
 from utils.data_loader import load_data, build_summary
 
 app = FastAPI(title="NurseryPulse AI Backend")
 
-# ── CORS — allow React dev server and production frontend ─────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -21,16 +21,16 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 
-# ── Pre-load data on startup ──────────────────────────────────────────────────
 @app.on_event("startup")
 def startup():
     load_data()
     build_summary()
     print("\n🌱 NurseryPulse Backend ready  →  http://localhost:5000")
-    print("📊 Dataset loaded. POST /api/chat to query.\n")
+    print("📊 Dataset loaded. POST /api/chat to query.")
+    print("📈 Dashboard APIs ready under /api/data\n")
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 app.include_router(chat_router, prefix="/api/chat")
+app.include_router(data_router, prefix="/api/data")
 
 @app.get("/api/health")
 def health():
