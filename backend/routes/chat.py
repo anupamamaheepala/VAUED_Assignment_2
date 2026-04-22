@@ -1,10 +1,8 @@
-# chat.py
-
 import os
 import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import google.generativeai as genai
+from openai import OpenAI
 
 from utils.data_loader import build_summary, get_filtered_context
 
@@ -28,7 +26,7 @@ Guidelines:
 
 
 class Message(BaseModel):
-    role: str      # "user" or "assistant"
+    role: str
     content: str
 
 
@@ -39,14 +37,11 @@ class ChatRequest(BaseModel):
 
 @router.post("")
 async def chat(req: ChatRequest):
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not set in .env")
-
-    genai.configure(api_key=api_key)
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not set in .env")
 
     try:
-        # Build data context for this query
         summary = build_summary()
         ctx     = get_filtered_context(req.message)
         stats   = ctx["stats"]
@@ -66,28 +61,31 @@ Filtered records matching query: {stats['total']}
 - Health Breakdown:   {stats['health_breakdown']}
 
 === SAMPLE RECORDS (up to 50 rows) ===
-{json.dumps(sample, indent=None)}
+{json.dumps(sample)}
 """.strip()
 
-        # Convert history to Gemini format
-        gemini_history = [
-            {
-                "role": "model" if m.role == "assistant" else "user",
-                "parts": [m.content],
-            }
-            for m in req.history
-        ]
+        prompt = f"Data Context:\n{context_block}\n\nUser Question: {req.message}"
 
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            system_instruction=SYSTEM_INSTRUCTION,
+        # Build messages list for OpenAI
+        messages = [{"role": "system", "content": SYSTEM_INSTRUCTION}]
+
+        # Add conversation history
+        for m in req.history:
+            messages.append({"role": m.role, "content": m.content})
+
+        # Add current message with data context
+        messages.append({"role": "user", "content": prompt})
+
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.3,
         )
 
-        chat_session = model.start_chat(history=gemini_history)
-        prompt = f"Data Context:\n{context_block}\n\nUser Question: {req.message}"
-        response = chat_session.send_message(prompt)
-
-        return {"reply": response.text}
+        reply = response.choices[0].message.content
+        return {"reply": reply}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

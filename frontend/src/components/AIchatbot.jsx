@@ -163,34 +163,39 @@ export default function AIchatbot({ onNavigate }) {
   }, [messages, loading]);
 
   const sendMessage = async (text) => {
-    const msg = text || input.trim();
-    if (!msg || loading) return;
-    setInput("");
+  const msg = text || input.trim();
+  if (!msg || loading) return;
+  setInput("");
 
-    const newMessages = [...messages, { role: "user", content: msg, time: "Just now" }];
-    setMessages(newMessages);
-    setLoading(true);
+  // Build history for the FastAPI backend
+  const history = messages
+    .filter((m) => !m.welcome && !m.summary && m.content)
+    .map((m) => ({
+      role: m.role === "bot" ? "assistant" : "user",
+      content: m.content,
+    }));
 
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: "You are an agronomist AI assistant for NurseryPulse Smart Observatory. You help monitor nursery crops, soil health, irrigation, and environmental data. Keep responses concise and practical.",
-          messages: [{ role: "user", content: msg }],
-        }),
-      });
-      const data = await res.json();
-      const reply = data.content?.map(b => b.text || "").join("") || "Sorry, I couldn't process that.";
-      setMessages(prev => [...prev, { role: "bot", content: reply }]);
-    } catch {
-      setMessages(prev => [...prev, { role: "bot", content: "⚠️ Unable to reach the AI service. Please ensure the backend is running." }]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  setMessages((prev) => [...prev, { role: "user", content: msg, time: "Just now" }]);
+  setLoading(true);
+
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg, history }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Server error");
+    setMessages((prev) => [...prev, { role: "bot", content: data.reply }]);
+  } catch (err) {
+    setMessages((prev) => [
+      ...prev,
+      { role: "bot", content: `⚠️ ${err.message}. Ensure the Python backend is running on port 5000.` },
+    ]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }

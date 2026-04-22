@@ -35,3 +35,8 @@ app.include_router(data_router, prefix="/api/data")
 @app.get("/api/health")
 def health():
     return {"status": "ok", "message": "NurseryPulse AI Backend Running"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 5000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

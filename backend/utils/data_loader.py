@@ -1,4 +1,5 @@
 # data_loader.py
+import json
 import pandas as pd
 from pathlib import Path
 from functools import lru_cache
@@ -116,7 +117,7 @@ def get_filtered_context(query: str) -> dict:
     if "irrigat" in q:
         df = df[df["irrigation_needed"] == 1]
 
-    sample = df.head(50).to_dict(orient="records")
+    sample = json.loads(df.head(10).to_json(orient="records"))
     health_counts = df["crop_health"].value_counts().to_dict()
 
     stats = {
