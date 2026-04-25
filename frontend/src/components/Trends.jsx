@@ -245,12 +245,13 @@ export default function Trends({ onNavigate }) {
   const [cropType,   setCropType]   = useState("All Crop Types");
   const [trendsData, setTrendsData] = useState(null);
   const [loading,    setLoading]    = useState(true);
+  const [showSimulation, setShowSimulation] = useState(false);
 
   // Re-fetch whenever any filter changes
   useEffect(() => {
   setLoading(true);
 
-  const url = `http://127.0.0.1:8000/api/data/trends?location=${encodeURIComponent(location)}&crop=${encodeURIComponent(cropType)}&period=${encodeURIComponent(period)}`;
+  const url = `http://127.0.0.1:5000/api/data/trends?location=${encodeURIComponent(location)}&crop=${encodeURIComponent(cropType)}&period=${encodeURIComponent(period)}`;
 
   fetch(url)
     .then((res) => res.json())
@@ -273,6 +274,32 @@ export default function Trends({ onNavigate }) {
   const efficiencyPct = typeof bestLocation.efficiency === "string"
     ? bestLocation.efficiency
     : `${bestLocation.efficiency}%`;
+
+  // Simulation: project a −15% rainfall scenario and estimate yield impact per month
+  const simulationData = BAR_DATA.map(d => {
+    const simRainfall = parseFloat((d.rainfall * 0.85).toFixed(1));
+    const rainfallShare = (d.rainfall + d.fertilizer) > 0
+      ? d.rainfall / (d.rainfall + d.fertilizer) : 0.5;
+    const yieldDrop = parseFloat((d.actual_output * 0.15 * rainfallShare).toFixed(1));
+    return { ...d, simRainfall, yieldDrop };
+  });
+  const totalYield      = BAR_DATA.reduce((s, d) => s + d.actual_output, 0);
+  const totalYieldDrop  = simulationData.reduce((s, d) => s + d.yieldDrop, 0);
+  const avgYieldDropPct = totalYield > 0 ? ((totalYieldDrop / totalYield) * 100).toFixed(1) : "0.0";
+  const mostAffectedMonth = simulationData.length > 0
+    ? simulationData.reduce((best, d) => d.yieldDrop > best.yieldDrop ? d : best, simulationData[0])
+    : null;
+
+  // Dynamic agronomist insight computed from real BAR_DATA
+  const agronomistInsight = (() => {
+    if (BAR_DATA.length === 0) return "Monitoring active. Awaiting sufficient data for analysis.";
+    const peak = BAR_DATA.reduce((best, d) => {
+      const ratio = d.fertilizer > 0 ? d.actual_output / d.fertilizer : 0;
+      return ratio > (best?.ratio ?? 0) ? { ...d, ratio } : best;
+    }, null);
+    if (!peak) return "Fertilizer levels are within optimal range across all monitored sectors.";
+    return `${peak.label} recorded peak yield efficiency at ${Number(peak.actual_output).toFixed(0)} t — best output-to-input ratio in the current period.`;
+  })();
 
   const FILTER_CONFIG = [
     {
@@ -470,11 +497,11 @@ export default function Trends({ onNavigate }) {
             <div style={{ position: "relative", height: "300px", width: "100%" }}>
               <svg width="100%" height="100%" viewBox="0 0 1000 300" preserveAspectRatio="none">
                 {BAR_DATA.length > 0 && (() => {
-                  const max = Math.max(...BAR_DATA.map(d => d.rainfall || 0), 1);
+                  const max = Math.max(...BAR_DATA.map(d => d.actual_output || 0), 1);
 
                   const points = BAR_DATA.map((d, i) => {
                     const x = (i / (BAR_DATA.length - 1 || 1)) * 1000;
-                    const y = 300 - ((d.rainfall || 0) / max) * 260;
+                    const y = 300 - ((d.actual_output || 0) / max) * 260;
                     return `${x},${y}`;
                   }).join(" ");
 
@@ -488,7 +515,7 @@ export default function Trends({ onNavigate }) {
                       />
                       {BAR_DATA.map((d, i) => {
                         const x = (i / (BAR_DATA.length - 1 || 1)) * 1000;
-                        const y = 300 - ((d.rainfall || 0) / max) * 260;
+                        const y = 300 - ((d.actual_output || 0) / max) * 260;
                         return <circle key={i} cx={x} cy={y} r="5" fill="#88d982" />;
                       })}
                     </>
@@ -497,8 +524,8 @@ export default function Trends({ onNavigate }) {
 
               </svg>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: "20px" }}>
-                {["JAN","MAR","MAY","JUL","SEP","NOV"].map((m) => (
-                  <span key={m} style={{ fontSize: "10px", fontWeight: "700", color: C.stone500, letterSpacing: "0.05em" }}>{m}</span>
+                {BAR_DATA.map((d) => (
+                  <span key={d.label} style={{ fontSize: "10px", fontWeight: "700", color: C.stone500, letterSpacing: "0.05em" }}>{d.label.toUpperCase()}</span>
                 ))}
               </div>
             </div>
@@ -635,12 +662,21 @@ export default function Trends({ onNavigate }) {
             {/* Agronomist note */}
             <div style={{ borderRadius: "12px", overflow: "hidden", position: "relative", minHeight: "200px", background: "#0d1a0d" }}>
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, #0d1a0d 0%, #1a2f1a 50%, #0a150a 100%)" }} />
-              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 60% 30%, rgba(136,217,130,0.15) 0%, transparent 60%)" }} />
-              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(to top, #0a0a0a, transparent)", height: "70%" }} />
+              <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 65% 25%, rgba(136,217,130,0.18) 0%, transparent 65%)" }} />
+              {/* Leaf SVG watermark */}
+              <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"
+                style={{ position: "absolute", top: "-8px", right: "-8px", width: "155px", height: "155px", opacity: 0.13, pointerEvents: "none" }}>
+                <path d="M155 18 C155 18 65 32 40 112 C28 148 52 184 98 184 C144 184 174 148 174 106 C174 62 142 18 155 18Z" fill="#88d982" />
+                <line x1="97" y1="184" x2="97" y2="62" stroke="#88d982" strokeWidth="4" strokeLinecap="round" />
+                <path d="M97 145 C76 128 52 126 36 120" stroke="#88d982" strokeWidth="3" strokeLinecap="round" />
+                <path d="M97 118 C118 102 141 101 158 95" stroke="#88d982" strokeWidth="3" strokeLinecap="round" />
+                <path d="M97 92 C78 78 57 76 43 71" stroke="#88d982" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(to top, #0a0a0a 45%, transparent)", height: "78%" }} />
               <div style={{ position: "absolute", bottom: "16px", left: "16px", right: "16px" }}>
-                <p style={{ fontSize: "10px", fontWeight: "700", color: C.primary, textTransform: "uppercase", letterSpacing: "0.12em", margin: 0 }}>Agronomist Note</p>
-                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#fff", margin: "4px 0 0", lineHeight: 1.4 }}>
-                  Reduced phosphate levels correlated with +8% leaf surface area.
+                <p style={{ fontSize: "10px", fontWeight: "700", color: C.primary, textTransform: "uppercase", letterSpacing: "0.12em", margin: "0 0 5px" }}>Agronomist Note</p>
+                <h4 style={{ fontSize: "12px", fontWeight: "600", color: "#e8f5e6", margin: 0, lineHeight: 1.5 }}>
+                  {loading ? "Analyzing crop data…" : agronomistInsight}
                 </h4>
               </div>
             </div>
@@ -659,18 +695,157 @@ export default function Trends({ onNavigate }) {
                   <p style={{ fontSize: "12px", color: C.stone500, margin: "2px 0 0" }}>Historical data suggests a 15% drop in Q4 rainfall.</p>
                 </div>
               </div>
-              <button className="sim-btn" style={{
-                fontSize: "12px", fontWeight: "700", color: C.primary,
-                border: "1px solid rgba(136,217,130,0.2)", padding: "8px 16px",
-                borderRadius: "8px", cursor: "pointer", background: "transparent",
-                fontFamily: fontBody, transition: "all 0.15s", whiteSpace: "nowrap",
-              }}>
+              <button className="sim-btn" onClick={() => setShowSimulation(true)}
+                disabled={BAR_DATA.length === 0}
+                style={{
+                  fontSize: "12px", fontWeight: "700", color: BAR_DATA.length === 0 ? C.stone500 : C.primary,
+                  border: `1px solid ${BAR_DATA.length === 0 ? "rgba(120,113,108,0.2)" : "rgba(136,217,130,0.2)"}`,
+                  padding: "8px 16px", borderRadius: "8px",
+                  cursor: BAR_DATA.length === 0 ? "not-allowed" : "pointer",
+                  background: "transparent", fontFamily: fontBody, transition: "all 0.15s", whiteSpace: "nowrap",
+                }}>
                 View Simulation
               </button>
             </div>
           </div>
         </section>
       </main>
+
+      {/* ── Rainfall Simulation Popup ── */}
+      {showSimulation && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 200,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: "16px",
+          }}
+          onClick={() => setShowSimulation(false)}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: C.surface,
+              border: "1px solid rgba(136,217,130,0.15)",
+              borderRadius: "14px",
+              padding: "20px 22px",
+              width: "100%",
+              maxWidth: "480px",
+              boxShadow: "0 16px 48px rgba(0,0,0,0.55)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "14px",
+            }}
+          >
+            {/* Header row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span className="material-symbols-outlined" style={{ color: C.secondaryContainer, fontSize: "18px" }}>water_drop</span>
+                <span style={{ fontSize: "14px", fontWeight: "700", fontFamily: fontHeadline, color: C.onSurface }}>
+                  Rainfall Deficit Simulation
+                </span>
+                <span style={{
+                  fontSize: "10px", fontWeight: "700", padding: "2px 7px",
+                  borderRadius: "9999px", background: "rgba(254,179,0,0.12)",
+                  color: C.secondaryContainer, letterSpacing: "0.04em",
+                }}>−15%</span>
+              </div>
+              <button onClick={() => setShowSimulation(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: C.stone500, display: "flex", padding: "2px" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>close</span>
+              </button>
+            </div>
+
+            {/* 3 KPI chips */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+              {[
+                { label: "Yield Drop",      value: `-${avgYieldDropPct}%`, accent: C.secondaryContainer },
+                { label: "Most Affected",   value: mostAffectedMonth?.label ?? "—", accent: C.error },
+                { label: "Recovery",        value: "Moderate",             accent: C.primary },
+              ].map(({ label, value, accent }) => (
+                <div key={label} style={{
+                  background: C.surfaceHigh, borderRadius: "8px", padding: "10px 10px 8px",
+                  borderTop: `2px solid ${accent}`,
+                }}>
+                  <p style={{ fontSize: "9px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", color: C.stone500, margin: "0 0 4px" }}>{label}</p>
+                  <p style={{ fontSize: "16px", fontWeight: "800", fontFamily: fontHeadline, color: accent, margin: 0 }}>{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Mini bar chart: Actual vs Simulated */}
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span style={{ fontSize: "11px", fontWeight: "700", color: C.onSurfaceVariant }}>Actual vs Simulated Rainfall</span>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  {[{ color: C.primary, label: "Actual" }, { color: C.secondaryContainer, label: "−15%" }].map(({ color, label }) => (
+                    <div key={label} style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: color, display: "inline-block" }} />
+                      <span style={{ fontSize: "9px", color: C.stone400 }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {simulationData.length > 0 && (() => {
+                const maxR  = Math.max(...simulationData.map(d => d.rainfall), 1);
+                const chartH = 80;
+                const chartW = 440;
+                const slotW  = chartW / simulationData.length;
+                const barW   = Math.min(16, slotW * 0.3);
+                return (
+                  <svg viewBox={`0 0 ${chartW} ${chartH + 20}`} width="100%" style={{ display: "block" }}>
+                    {[0.5, 1].map(f => (
+                      <line key={f} x1="0" y1={chartH * (1 - f)} x2={chartW} y2={chartH * (1 - f)}
+                        stroke="rgba(255,255,255,0.04)" strokeWidth="1" />
+                    ))}
+                    {simulationData.map((d, i) => {
+                      const cx      = slotW * i + slotW / 2;
+                      const actualH = (d.rainfall / maxR) * chartH;
+                      const simH    = (d.simRainfall / maxR) * chartH;
+                      return (
+                        <g key={d.label}>
+                          <rect x={cx - barW - 1} y={chartH - actualH} width={barW} height={actualH} fill="#88d982" rx="2" opacity="0.85" />
+                          <rect x={cx + 1}         y={chartH - simH}    width={barW} height={simH}    fill={C.secondaryContainer} rx="2" opacity="0.75" />
+                          <text x={cx} y={chartH + 14} textAnchor="middle" fontSize="9" fill={C.stone500} fontFamily="Inter,sans-serif" fontWeight="700">{d.label}</text>
+                        </g>
+                      );
+                    })}
+                    <line x1="0" y1={chartH} x2={chartW} y2={chartH} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
+                  </svg>
+                );
+              })()}
+            </div>
+
+            {/* Yield impact rows */}
+            <div>
+              <span style={{ fontSize: "11px", fontWeight: "700", color: C.onSurfaceVariant, display: "block", marginBottom: "8px" }}>Estimated Yield Impact</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {simulationData.map(d => {
+                  const impactPct = d.actual_output > 0 ? (d.yieldDrop / d.actual_output) * 100 : 0;
+                  const barColor  = impactPct > 12 ? C.error : C.secondaryContainer;
+                  return (
+                    <div key={d.label} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ width: "28px", fontSize: "9px", fontWeight: "700", color: C.stone400, flexShrink: 0 }}>{d.label}</span>
+                      <div style={{ flex: 1, height: "5px", background: C.stone800, borderRadius: "9999px", overflow: "hidden" }}>
+                        <div style={{ width: `${Math.min(impactPct * 5.5, 100)}%`, height: "100%", background: barColor, borderRadius: "9999px" }} />
+                      </div>
+                      <span style={{ width: "38px", fontSize: "9px", fontWeight: "700", color: barColor, textAlign: "right", flexShrink: 0 }}>−{impactPct.toFixed(1)}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Recommendation */}
+            <div style={{ display: "flex", gap: "8px", padding: "10px 12px", background: "rgba(136,217,130,0.06)", borderRadius: "8px", border: "1px solid rgba(136,217,130,0.1)" }}>
+              <span className="material-symbols-outlined" style={{ color: C.primary, fontSize: "16px", flexShrink: 0, marginTop: "1px" }}>eco</span>
+              <p style={{ fontSize: "11px", color: C.onSurfaceVariant, margin: 0, lineHeight: 1.6 }}>
+                Increase drip irrigation by 20% in high-risk months and maintain soil moisture ≥55%.
+                Schedule reservoir top-ups before <strong style={{ color: C.primary }}>{mostAffectedMonth?.label ?? "peak season"}</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

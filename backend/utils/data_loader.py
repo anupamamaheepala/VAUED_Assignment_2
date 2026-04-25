@@ -326,8 +326,17 @@ def get_alerts_data() -> dict:
     }
 
 
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
 def get_trends_data(location=None, crop=None, period=None):
     df = load_data().copy()
+
+    # month column is numeric (1-12); convert to abbreviation for display
+    df["month_num"] = pd.to_numeric(df["month"], errors="coerce").fillna(0).astype(int)
+    df["month_name"] = df["month_num"].apply(
+        lambda m: MONTH_NAMES[m - 1] if 1 <= m <= 12 else "Unknown"
+    )
 
     if location and location != "All Locations":
         df = df[df["location"].astype(str).str.strip().str.lower() == location.strip().lower()]
@@ -336,35 +345,48 @@ def get_trends_data(location=None, crop=None, period=None):
         df = df[df["crop_type"].astype(str).str.strip().str.lower() == crop.strip().lower()]
 
     if period == "Q1 - 2024":
-        df = df[df["month"].isin(["Jan", "Feb", "Mar"])]
+        df = df[df["month_num"].isin([1, 2, 3])]
     elif period == "Q2 - 2024":
-        df = df[df["month"].isin(["Apr", "May", "Jun"])]
+        df = df[df["month_num"].isin([4, 5, 6])]
     elif period == "Q3 - 2024":
-        df = df[df["month"].isin(["Jul", "Aug", "Sep"])]
+        df = df[df["month_num"].isin([7, 8, 9])]
     elif period == "Q4 - 2024":
-        df = df[df["month"].isin(["Oct", "Nov", "Dec"])]
+        df = df[df["month_num"].isin([10, 11, 12])]
 
-    has_fertilizer = "fertilizer_usage" in df.columns
-
-    monthly = (
-        df.groupby("month")
-        .agg(
-            actual_output=("yield_estimate", "sum"),
-            avg_rainfall=("rainfall", "mean"),
-            avg_fertilizer=("fertilizer_usage", "mean") if has_fertilizer else ("rainfall", "mean"),
-        )
-        .reset_index()
+    # Use the actual column name in the CSV
+    fertilizer_col = "fertilizer_used" if "fertilizer_used" in df.columns else (
+        "fertilizer_usage" if "fertilizer_usage" in df.columns else None
     )
 
-    month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    agg_dict = {
+        "actual_output": ("yield_estimate", "sum"),
+        "avg_rainfall": ("rainfall", "mean"),
+    }
+    if fertilizer_col:
+        agg_dict["avg_fertilizer"] = (fertilizer_col, "mean")
+    else:
+        agg_dict["avg_fertilizer"] = ("rainfall", "mean")
+
+    monthly = df.groupby("month_name").agg(**agg_dict).reset_index().rename(columns={"month_name": "month"})
+
+    month_order = MONTH_NAMES
     monthly["month"] = pd.Categorical(monthly["month"], categories=month_order, ordered=True)
-    monthly = monthly.sort_values("month")
+    monthly = monthly.sort_values("month").reset_index(drop=True)
+
+    # Normalize fertilizer and rainfall to 0-100 range for bar chart display
+    max_f = monthly["avg_fertilizer"].max() if len(monthly) else 1
+    max_r = monthly["avg_rainfall"].max() if len(monthly) else 1
+    if not max_f or max_f == 0:
+        max_f = 1
+    if not max_r or max_r == 0:
+        max_r = 1
 
     bar_chart = [
         {
             "label": str(row["month"]),
-            "fertilizer": round(float(row["avg_fertilizer"]), 2),
-            "rainfall": round(float(row["avg_rainfall"]), 2),
+            "fertilizer": round(float(row["avg_fertilizer"] / max_f) * 100, 2),
+            "rainfall": round(float(row["avg_rainfall"] / max_r) * 100, 2),
+            "actual_output": round(float(row["actual_output"]) if pd.notna(row["actual_output"]) else 0, 2),
         }
         for _, row in monthly.iterrows()
     ]
@@ -392,9 +414,14 @@ def get_trends_data(location=None, crop=None, period=None):
         .head(1)
     )
 
+    # Compute efficiency as a percentage relative to the global max avg yield across all locations
+    global_max_yield = float(load_data().groupby("location")["yield_estimate"].mean().max() or 1)
+    best_loc_yield = float(best_location_data.iloc[0]) if len(best_location_data) else 0
+    efficiency_pct = round((best_loc_yield / global_max_yield) * 100, 1)
+
     best_location = {
         "name": best_location_data.index[0] if len(best_location_data) else "N/A",
-        "efficiency": round(float(best_location_data.iloc[0]), 2) if len(best_location_data) else 0,
+        "efficiency": efficiency_pct,
     }
 
     return {

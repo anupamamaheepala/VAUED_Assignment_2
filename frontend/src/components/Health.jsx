@@ -201,7 +201,7 @@ export default function Health({ onNavigate }) {
   const [healthData, setHealthData] = useState(null);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/data/health")
+    fetch("http://127.0.0.1:5000/api/data/health")
       .then((res) => res.json())
       .then((raw) => {
         // Normalise: inject icon + iconColor if API doesn't return them

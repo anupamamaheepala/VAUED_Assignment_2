@@ -199,7 +199,7 @@ export default function Alerts({ onNavigate }) {
       setAlertsData(JSON.parse(savedData));
       setLoading(false);
     } else {
-      fetch("http://127.0.0.1:8000/api/data/alerts")
+      fetch("http://127.0.0.1:5000/api/data/alerts")
         .then((res) => res.json())
         .then((data) => {
           setAlertsData(data);
